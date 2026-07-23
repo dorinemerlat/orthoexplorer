@@ -1,0 +1,24 @@
+cache/
+work
+data/
+envs/orthoexplorer/
+log_phyloconstructor/
+ncbi_dataset/
+.nextflow.log .nextflow.log.1 .nextflow.log.2 .nextflow.log.3 .nextflow.log.4 .nextflow.log.5 .nextflow.log.6 .nextflow.log.7 .nextflow.log.8 .nextflow.log.9
+nextflow.sbatch
+species_best.csv species.csv species.list
+species_best.csv
+species.csv
+species.list
+tree_with_46_species.treefile
+.nextflow.log
+.nextflow.log.1
+.nextflow.log.2
+.nextflow.log.3
+.nextflow.log.4
+.nextflow.log.5
+.nextflow.log.6
+.nextflow.log.7
+.nextflow.log.8
+.nextflow.log.9
+.nextflow
