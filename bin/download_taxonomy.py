@@ -2,7 +2,9 @@
 
 import argparse
 import csv
+import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -30,173 +32,361 @@ RANK_ORDER = [
 ]
 
 
-def fetch_url(url, timeout=30):
-    req = urllib.request.Request(url, headers={"User-Agent": "taxonomy-fetcher/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        return response.read()
-
-
-def is_taxid(value):
-    return value.strip().isdigit()
-
-
-def resolve_name_to_taxid(name):
-    query = urllib.parse.quote(name)
-    url = (
-        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-        f"?db=taxonomy&term={query}&retmode=xml"
-    )
-
-    data = fetch_url(url)
-    root = ET.fromstring(data)
-
-    ids = [x.text for x in root.findall(".//IdList/Id")]
-
-    if not ids:
-        raise ValueError(f"No taxid found for name: {name}")
-
-    return ids[0]
-
-
-def fetch_taxonomy(taxid):
-    url = (
-        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-        f"?db=taxonomy&id={taxid}&retmode=xml"
-    )
-
-    data = fetch_url(url)
-    root = ET.fromstring(data)
-
-    taxon = root.find(".//Taxon")
-    if taxon is None:
-        raise ValueError(f"No taxonomy found for taxid: {taxid}")
-
-    scientific_name = taxon.findtext("ScientificName", default="")
-    taxid = taxon.findtext("TaxId", default=taxid)
-
-    lineage = {}
-
-    for lineage_taxon in taxon.findall(".//LineageEx/Taxon"):
-        rank = lineage_taxon.findtext("Rank", default="").strip()
-        name = lineage_taxon.findtext("ScientificName", default="").strip()
-
-        if not rank:
-            continue
-
-        rank_lower = rank.lower()
-
-        if rank_lower in {"no rank", "clade"}:
-            continue
-
-        lineage[rank_lower] = name
-
-    current_rank = taxon.findtext("Rank", default="").strip().lower()
-    if current_rank and current_rank not in {"no rank", "clade"}:
-        lineage[current_rank] = scientific_name
-
-    return {
-        "specie": scientific_name,
-        "taxid": taxid,
-        "lineage": lineage,
-    }
-
-
-def read_input(input_file):
-    values = []
-
-    with open(input_file, "r", encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-
-            if not line:
-                continue
-
-            if line.lower() in {"species", "specie", "name", "taxid"}:
-                continue
-
-            values.append(line)
-
-    return values
-
-
-def main():
+def parse_args():
     parser = argparse.ArgumentParser(
-        description="Fetch taxonomy table from taxids or species names using NCBI Taxonomy API."
+        description=(
+            "Fetch NCBI taxonomy information for datasets listed in a CSV file."
+        )
     )
 
     parser.add_argument(
-        "-i", "--input",
+        "-i",
+        "--input",
         required=True,
-        help="Input file with one taxid or species name per line."
+        help=(
+            "Input CSV file containing the columns: "
+            "id, name and taxid."
+        ),
     )
 
     parser.add_argument(
-        "-o", "--output",
-        default="taxonomy_table.tsv",
-        help="Output TSV file."
+        "-o",
+        "--output",
+        default="taxonomy.tsv",
+        help="Output taxonomy TSV file.",
     )
 
     parser.add_argument(
         "--sleep",
         type=float,
-        default=1,
-        help="Delay between API calls, to avoid hammering NCBI."
+        default=1.0,
+        help="Delay in seconds between NCBI API requests.",
     )
 
-    args = parser.parse_args()
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=30,
+        help="HTTP request timeout in seconds.",
+    )
 
-    queries = read_input(args.input)
-    results = []
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=3,
+        help="Maximum number of attempts for each HTTP request.",
+    )
 
-    for query in queries:
-        query = query.strip()
+    return parser.parse_args()
 
+
+def fetch_url(url, timeout=30, retries=3):
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "OrthoExplorer-taxonomy-fetcher/1.0",
+        },
+    )
+
+    last_error = None
+
+    for attempt in range(1, retries + 1):
         try:
-            if is_taxid(query):
-                taxid = query
-            else:
-                taxid = resolve_name_to_taxid(query)
-                time.sleep(args.sleep)
+            with urllib.request.urlopen(
+                request,
+                timeout=timeout,
+            ) as response:
+                return response.read()
 
-            taxonomy = fetch_taxonomy(taxid)
-            results.append(taxonomy)
+        except (
+            urllib.error.HTTPError,
+            urllib.error.URLError,
+            TimeoutError,
+        ) as error:
+            last_error = error
 
-            print(f"OK: {query} -> {taxonomy['specie']} ({taxonomy['taxid']})")
+            if attempt < retries:
+                time.sleep(attempt * 2)
 
-        except Exception as e:
-            print(f"WARNING: failed for {query}: {e}")
-            results.append({
-                "specie": query,
-                "taxid": "NA",
-                "lineage": {},
-            })
+    raise RuntimeError(
+        f"NCBI request failed after {retries} attempts: {last_error}"
+    )
 
-        time.sleep(args.sleep)
 
-    used_ranks = []
-    for rank in RANK_ORDER:
-        if any(rank in result["lineage"] for result in results):
-            used_ranks.append(rank)
+def fetch_taxonomy(taxid, timeout=30, retries=3):
+    encoded_taxid = urllib.parse.quote(str(taxid))
 
-    fieldnames = ["specie", "taxid"] + used_ranks
+    url = (
+        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
+        f"efetch.fcgi?db=taxonomy&id={encoded_taxid}&retmode=xml"
+    )
 
-    with open(args.output, "w", newline="", encoding="utf-8") as out:
-        writer = csv.DictWriter(out, fieldnames=fieldnames, delimiter="\t")
+    data = fetch_url(
+        url,
+        timeout=timeout,
+        retries=retries,
+    )
+
+    root = ET.fromstring(data)
+    taxon = root.find(".//Taxon")
+
+    if taxon is None:
+        raise ValueError(
+            f"No taxonomy found for taxid: {taxid}"
+        )
+
+    scientific_name = taxon.findtext(
+        "ScientificName",
+        default="",
+    ).strip()
+
+    resolved_taxid = taxon.findtext(
+        "TaxId",
+        default=str(taxid),
+    ).strip()
+
+    lineage = {}
+
+    for lineage_taxon in taxon.findall(".//LineageEx/Taxon"):
+        rank = lineage_taxon.findtext(
+            "Rank",
+            default="",
+        ).strip().lower()
+
+        scientific_lineage_name = lineage_taxon.findtext(
+            "ScientificName",
+            default="",
+        ).strip()
+
+        if not rank or rank in {"no rank", "clade"}:
+            continue
+
+        lineage[rank] = scientific_lineage_name
+
+    current_rank = taxon.findtext(
+        "Rank",
+        default="",
+    ).strip().lower()
+
+    if current_rank and current_rank not in {"no rank", "clade"}:
+        lineage[current_rank] = scientific_name
+
+    return {
+        "specie_name": scientific_name,
+        "taxid": resolved_taxid,
+        "lineage": lineage,
+    }
+
+
+def read_input_csv(input_file):
+    datasets = []
+    seen_ids = set()
+
+    with open(
+        input_file,
+        "r",
+        encoding="utf-8-sig",
+        newline="",
+    ) as handle:
+        reader = csv.DictReader(handle)
+
+        required_columns = {
+            "id",
+            "name",
+            "taxid",
+        }
+
+        missing_columns = required_columns - set(
+            reader.fieldnames or []
+        )
+
+        if missing_columns:
+            raise ValueError(
+                "Input CSV is missing required columns: "
+                + ", ".join(sorted(missing_columns))
+            )
+
+        for line_number, row in enumerate(reader, start=2):
+            dataset_id = (row.get("id") or "").strip()
+            name = (row.get("name") or "").strip()
+            taxid = (row.get("taxid") or "").strip()
+
+            if not dataset_id:
+                raise ValueError(
+                    f"Line {line_number}: missing dataset ID"
+                )
+
+            if dataset_id in seen_ids:
+                raise ValueError(
+                    f"Line {line_number}: duplicate dataset ID "
+                    f"'{dataset_id}'"
+                )
+
+            if not name:
+                raise ValueError(
+                    f"Line {line_number}: missing dataset name"
+                )
+
+            if not taxid:
+                raise ValueError(
+                    f"Line {line_number}: missing taxid for "
+                    f"'{dataset_id}'"
+                )
+
+            if not taxid.isdigit():
+                raise ValueError(
+                    f"Line {line_number}: invalid taxid "
+                    f"'{taxid}' for '{dataset_id}'"
+                )
+
+            seen_ids.add(dataset_id)
+
+            datasets.append(
+                {
+                    "id": dataset_id,
+                    "name": name,
+                    "taxid": taxid,
+                }
+            )
+
+    return datasets
+
+
+def determine_used_ranks(results):
+    return [
+        rank
+        for rank in RANK_ORDER
+        if any(
+            rank in result["lineage"]
+            for result in results
+        )
+    ]
+
+
+def write_output(output_file, results):
+    used_ranks = determine_used_ranks(results)
+
+    fieldnames = [
+        "id",
+        "name",
+        "specie_name",
+        "taxid",
+        *used_ranks,
+    ]
+
+    with open(
+        output_file,
+        "w",
+        encoding="utf-8",
+        newline="",
+    ) as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=fieldnames,
+            delimiter="\t",
+            extrasaction="ignore",
+        )
+
         writer.writeheader()
 
         for result in results:
             row = {
-                "specie": result["specie"],
+                "id": result["id"],
+                "name": result["name"],
+                "specie_name": result["specie_name"],
                 "taxid": result["taxid"],
             }
 
             for rank in used_ranks:
-                row[rank] = result["lineage"].get(rank, "")
+                row[rank] = result["lineage"].get(
+                    rank,
+                    "",
+                )
 
             writer.writerow(row)
 
-    print(f"\nWritten: {args.output}")
+
+def main():
+    args = parse_args()
+
+    try:
+        datasets = read_input_csv(args.input)
+    except (OSError, ValueError) as error:
+        print(
+            f"ERROR: {error}",
+            file=sys.stderr,
+        )
+        return 1
+
+    results = []
+    failed_queries = 0
+
+    for index, dataset in enumerate(datasets):
+        dataset_id = dataset["id"]
+        input_name = dataset["name"]
+        input_taxid = dataset["taxid"]
+
+        try:
+            taxonomy = fetch_taxonomy(
+                input_taxid,
+                timeout=args.timeout,
+                retries=args.retries,
+            )
+
+            results.append(
+                {
+                    "id": dataset_id,
+                    "name": input_name,
+                    "specie_name": taxonomy["specie_name"],
+                    "taxid": taxonomy["taxid"],
+                    "lineage": taxonomy["lineage"],
+                }
+            )
+
+            print(
+                f"OK: {dataset_id} -> "
+                f"{taxonomy['specie_name']} "
+                f"({taxonomy['taxid']})"
+            )
+
+        except Exception as error:
+            failed_queries += 1
+
+            print(
+                f"WARNING: failed for {dataset_id} "
+                f"(taxid {input_taxid}): {error}",
+                file=sys.stderr,
+            )
+
+            results.append(
+                {
+                    "id": dataset_id,
+                    "name": input_name,
+                    "specie_name": "",
+                    "taxid": input_taxid,
+                    "lineage": {},
+                }
+            )
+
+        if index < len(datasets) - 1:
+            time.sleep(args.sleep)
+
+    write_output(
+        args.output,
+        results,
+    )
+
+    print(f"Written: {args.output}")
+
+    if failed_queries:
+        print(
+            f"WARNING: taxonomy retrieval failed for "
+            f"{failed_queries} dataset(s).",
+            file=sys.stderr,
+        )
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -1,0 +1,106 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/dorinemerlat/orthoexplorer/main/assets/schema_input.json",
+    "title": "OrthoExplorer pipeline - species CSV schema",
+    "description": "Schema for OrthoExplorer species and outgroup CSV files. Each row must contain a species name and an NCBI Taxonomy identifier. Protein FASTA and GFF/GFF3 files must either both be supplied or both be left empty.",
+    "type": "array",
+    "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "name": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[^,\\r\\n]+$",
+                "errorMessage": "Species name must be provided and cannot contain commas or line breaks.",
+                "meta": [
+                    "name"
+                ]
+            },
+            "taxid": {
+                "type": [
+                    "string",
+                    "integer"
+                ],
+                "pattern": "^[0-9]+$",
+                "errorMessage": "NCBI Taxonomy ID must be provided and contain only numbers.",
+                "meta": [
+                    "taxid"
+                ]
+            },
+            "fasta": {
+                "type": "string",
+                "pattern": "^$|^\\S+\\.(fa|faa|fas|fasta)(\\.gz)?$",
+                "errorMessage": "Protein FASTA must be empty or an existing path without spaces ending in .fa, .faa, .fas, .fasta, optionally followed by .gz.",
+                "unique": true,
+                "meta": [
+                    "fasta"
+                ]
+            },
+            "gff": {
+                "type": "string",
+                "pattern": "^$|^\\S+\\.(gff|gff3)(\\.gz)?$",
+                "errorMessage": "GFF annotation must be empty or an existing path without spaces ending in .gff or .gff3, optionally followed by .gz.",
+                "unique": true,
+                "meta": [
+                    "gff"
+                ]
+            }
+        },
+        "required": [
+            "name",
+            "taxid",
+            "fasta",
+            "gff"
+        ],
+        "oneOf": [
+            {
+                "title": "Use user-provided annotation files",
+                "properties": {
+                    "fasta": {
+                        "type": "string",
+                        "minLength": 1,
+                        "pattern": "^\\S+\\.(fa|faa|fas|fasta)(\\.gz)?$",
+                        "format": "file-path",
+                        "exists": true
+                    },
+                    "gff": {
+                        "type": "string",
+                        "minLength": 1,
+                        "pattern": "^\\S+\\.(gff|gff3)(\\.gz)?$",
+                        "format": "file-path",
+                        "exists": true
+                    }
+                },
+                "required": [
+                    "fasta",
+                    "gff"
+                ]
+            },
+            {
+                "title": "Download annotation files automatically",
+                "properties": {
+                    "fasta": {
+                        "const": ""
+                    },
+                    "gff": {
+                        "const": ""
+                    }
+                },
+                "required": [
+                    "fasta",
+                    "gff"
+                ]
+            }
+        ],
+        "errorMessage": {
+            "required": {
+                "name": "The 'name' column is required.",
+                "taxid": "The 'taxid' column is required.",
+                "fasta": "The 'fasta' column is required, even when left empty.",
+                "gff": "The 'gff' column is required, even when left empty."
+            },
+            "oneOf": "Columns 'fasta' and 'gff' must either both contain valid file paths or both be empty."
+        }
+    }
+}

@@ -1,1 +1,3 @@
-taxid,name,file
+taxid,name,fasta,gff
+7227,Drosophila melanogaster,,
+7460,Apis mellifera,/path/to/apis-mellifera.faa,/path/to/apis-mellifera.gff3

@@ -1,0 +1,3 @@
+taxid,name,fasta,gff
+126957,Strigamia maritima,/path/to/strigamia-maritima.faa,/path/to/strigamia-maritima.gff3
+1490507,Geophilus flavus,,
