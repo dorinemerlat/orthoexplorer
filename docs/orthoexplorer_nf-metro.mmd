@@ -1,0 +1,57 @@
+%%metro title: OrthoExplorer
+%%metro style: light
+
+%%metro line: main | Main workflow | #686868
+
+%%metro grid: data_acquisition    | 0,0,1,1
+%%metro grid: orthology_inference | 0,1,1,1
+%%metro grid: downstream_analysis | 0,2,1,1
+
+graph LR
+
+subgraph data_acquisition [Collect and prepare proteomes]
+    %%metro direction: TB
+
+    download_taxonomy[Download NCBI taxonomy]
+    taxonomy_csv[Generate taxonomy table]
+
+    user_proteomes[User-provided proteomes]
+
+    download_genomes[Download genomes and annotations from NCBI]
+    extract_canonical_proteins[Extract canonical proteins]
+
+    all_proteomes[Collect all proteomes]
+
+    download_taxonomy -->|main| taxonomy_csv
+
+    download_genomes -->|main| extract_canonical_proteins
+    extract_canonical_proteins -->|main| all_proteomes
+
+    user_proteomes -->|main| all_proteomes
+end
+
+
+subgraph orthology_inference [Infer orthology with OrthoFinder]
+    %%metro direction: TB
+
+    run_orthofinder[Run OrthoFinder]
+
+    all_proteomes -->|main| run_orthofinder
+end
+
+
+subgraph downstream_analysis [Analyse orthogroups]
+    %%metro direction: TB
+
+    assign_gene_conservation_rank[Assign gene conservation ranks]
+    define_pangenome[Define the pangenome]
+    plot_orthogroup_upset[Generate orthogroup UpSet plots]
+
+    run_orthofinder -->|main| assign_gene_conservation_rank
+    taxonomy_csv -->|main| assign_gene_conservation_rank
+
+    run_orthofinder -->|main| define_pangenome
+    taxonomy_csv -->|main| define_pangenome
+
+    define_pangenome -->|main| plot_orthogroup_upset
+end

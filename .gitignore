@@ -22,3 +22,6 @@ tree_with_46_species.treefile
 .nextflow.log.8
 .nextflow.log.9
 .nextflow
+data/colors.yaml
+nextflow_myriapoda.config
+docs/phyloconstructor_nf-metro.mmd
