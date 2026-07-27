@@ -8,6 +8,7 @@ workflow DOWNSTREAM_ANALYSIS {
     gene_count
     unassigned_genes
     tree
+    datasets
     taxonomy
     colors
 

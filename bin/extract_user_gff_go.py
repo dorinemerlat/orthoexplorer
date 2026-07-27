@@ -74,6 +74,7 @@ def extract_annotations(gff_path, species_name):
                 rows.append(
                     {
                         "specie_name": species_name,
+                        "id": protein_id,
                         "gene_id": gene_id,
                         "gene_name": gene_name,
                         "product": product,

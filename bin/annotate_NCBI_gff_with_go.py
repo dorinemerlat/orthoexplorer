@@ -11,6 +11,7 @@ TRANSCRIPT_FEATURE_TYPES = ("mRNA", "transcript")
 
 OUTPUT_COLUMNS = [
     "specie_name",
+    "id",
     "protein_id",
     "gene_id",
     "gene_name",
@@ -76,6 +77,7 @@ def read_gff_transcripts(gff_path):
         for transcript in db.features_of_type(feature_type, order_by=("seqid", "start")):
             rows.append(
                 {
+                    "id": get_attribute(transcript, "ID", transcript.id),
                     "protein_id": get_attribute(transcript, "protein_id"),
                     "gene_id": extract_gene_id(transcript),
                     "gene_name": get_attribute(transcript, "gene"),
@@ -85,14 +87,14 @@ def read_gff_transcripts(gff_path):
 
     transcripts = pd.DataFrame(
         rows,
-        columns=["protein_id", "gene_id", "gene_name", "product"],
+        columns=["id", "protein_id", "gene_id", "gene_name", "product"],
     )
 
     # NCBI GFF files may contain several transcripts for the same GeneID.
     return keep_most_complete_rows(
         transcripts,
         subset="gene_id",
-        columns=["protein_id", "gene_name", "product"],
+        columns=["id", "protein_id", "gene_name", "product"],
     )
 
 
