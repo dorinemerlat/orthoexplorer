@@ -1,5 +1,7 @@
 include { ASSIGN_GENE_CONSERVATION_RANK } from "${projectDir}/modules/downstream_analysis/assign_gene_conservation_rank"
 include { VENN_UPSET_ORTHOGROUPS        } from "${projectDir}/modules/downstream_analysis/venn_upset_orthogroups"
+include { DOWNLOAD_GO_OBO               } from "${projectDir}/modules/downstream_analysis/download_go_obo"
+include { FIND_ENRICHMENT               } from "${projectDir}/modules/downstream_analysis/find_enrichment"
 
 workflow DOWNSTREAM_ANALYSIS {
 
@@ -7,6 +9,7 @@ workflow DOWNSTREAM_ANALYSIS {
     orthogroups
     gene_count
     unassigned_genes
+    orthogroup2go
     tree
     taxonomy
     colors
@@ -39,8 +42,16 @@ workflow DOWNSTREAM_ANALYSIS {
             [orthogroups, gene_count, taxonomy, colors, clades]
         }
 
-    // VENN_UPSET_ORTHOGROUPS(pangenome_analysis_inputs)
+    VENN_UPSET_ORTHOGROUPS(pangenome_analysis_inputs)
 
+    DOWNLOAD_GO_OBO()
+
+    VENN_UPSET_ORTHOGROUPS.out.intersection_gene_lists
+        .flatten()
+        .map { path -> [path.baseName, path] }
+        .set { intersection_gene_lists }
+    
+    FIND_ENRICHMENT(intersection_gene_lists, VENN_UPSET_ORTHOGROUPS.out.background_orthogroups, orthogroup2go, DOWNLOAD_GO_OBO.out)
     
     // emit:
     // conservation = ASSIGN_GENE_CONSERVATION_RANK.out.results

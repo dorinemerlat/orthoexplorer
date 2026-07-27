@@ -16,7 +16,8 @@ process ANNOTATE_ORTHOGROUP_FUNCTIONS {
         --annotations ${annotation_tables.join(' ')} \
         --output orthogroup_functional_annotations.tsv
 
-    cut -f 1,2,3,4,5,6,7,8,9,10 orthogroup_functional_annotations.tsv > orthogroup_functional_annotations_without_all_functions.tsv
+    awk 'BEGIN{FS=OFS="\t"}{NF--; print}' orthogroup_functional_annotations.tsv \
+    > orthogroup_functional_annotations_without_all_functions.tsv
     """
 
     stub:

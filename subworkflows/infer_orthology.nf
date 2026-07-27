@@ -4,6 +4,7 @@ include { ADD_ORTHOGROUPS_TO_ANNOTATIONS    } from "${projectDir}/modules/infer_
 include { ANNOTATE_ORTHOGROUP_FUNCTIONS     } from "${projectDir}/modules/infer_orthology/annotate_orthogroup_functions"
 include { ADD_CAFE_FILTER_STATUS            } from "${projectDir}/modules/infer_orthology/add_cafe_filter_status"
 include { FILTER_LARGE_GENE_FAMILIES        } from "${projectDir}/modules/infer_orthology/filter_large_gene_families"
+include { BUILD_ORTHOGROUP2GO               } from "${projectDir}/modules/infer_orthology/build_orthogroup2go"
 
 workflow INFER_ORTHOLOGY {
 
@@ -62,6 +63,11 @@ workflow INFER_ORTHOLOGY {
     FILTER_LARGE_GENE_FAMILIES(ADD_CAFE_FILTER_STATUS.out, gene_count, max_copy_number)
 
     /*
+     * Build orthogroup2go mapping file for downstream analyses.
+     */
+    BUILD_ORTHOGROUP2GO(annotations_with_orthogroups)
+
+    /*
      * Select the tree used by downstream analyses.
      *
      * The user-provided tree has priority. When user_tree is false,
@@ -82,5 +88,6 @@ workflow INFER_ORTHOLOGY {
     orthogroups = orthogroups
     gene_count = gene_count
     unassigned_genes = unassigned_genes
+    orthogroup2go = BUILD_ORTHOGROUP2GO.out
     tree = tree
 }

@@ -6,9 +6,9 @@ process VENN_UPSET_ORTHOGROUPS {
     tuple path(orthogroups), path(gene_count), path(taxonomy), path(colors_yaml), val(clades)
 
     output:
-    path("eligible_orthogroups.txt"), emit: eligible_orthogroups
+    path("eligible_orthogroups.txt"), emit: background_orthogroups
     path("intersection_counts.tsv"), emit: intersection_counts
-    path("intersection_gene_lists"), emit: intersection_gene_lists
+    path("intersection_gene_lists/*.tsv"), emit: intersection_gene_lists
     path("intersection_genes_all.tsv"), emit: intersection_genes
     path("orthogroup_presence_absence_by_clade.tsv"), emit: presence_absence
     path("upset_orthogroups.{png,pdf,svg}"), emit: upset

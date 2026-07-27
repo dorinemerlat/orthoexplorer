@@ -18,6 +18,7 @@ def safe_name(value):
     """Return a filesystem-safe name."""
     value = str(value).strip()
     value = re.sub(r"[^A-Za-z0-9_.-]+", "_", value)
+    value = value.lower()
     return value.strip("_")
 
 
