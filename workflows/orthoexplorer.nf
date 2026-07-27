@@ -12,29 +12,31 @@ workflow ORTHOEXPLORER {
     outgroups_csv
     tree
     colors
+    download_count
 
     main:
     PREPARE_DATASETS(
         supplied_datasets,
         datasets_to_download,
         ingroups_csv,
-        outgroups_csv
+        outgroups_csv,
+        download_count
     )
 
-    INFER_ORTHOLOGY(
-        PREPARE_DATASETS.out.proteomes,
-        tree,
-        PREPARE_DATASETS.out.taxonomy
-    )
+    // INFER_ORTHOLOGY(
+    //     PREPARE_DATASETS.out.proteomes,
+    //     tree,
+    //     PREPARE_DATASETS.out.taxonomy
+    // )
 
-    DOWNSTREAM_ANALYSIS(
-        INFER_ORTHOLOGY.out.orthogroups,
-        INFER_ORTHOLOGY.out.gene_count,
-        INFER_ORTHOLOGY.out.unassigned_genes,
-        INFER_ORTHOLOGY.out.tree,
-        PREPARE_DATASETS.out.taxonomy,
-        colors,
-    )
+    // DOWNSTREAM_ANALYSIS(
+    //     INFER_ORTHOLOGY.out.orthogroups,
+    //     INFER_ORTHOLOGY.out.gene_count,
+    //     INFER_ORTHOLOGY.out.unassigned_genes,
+    //     INFER_ORTHOLOGY.out.tree,
+    //     PREPARE_DATASETS.out.taxonomy,
+    //     colors,
+    // )
 
     // emit:
     // prepared_datasets = PREPARE_DATASETS.out.datasets

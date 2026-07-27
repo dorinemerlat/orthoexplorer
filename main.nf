@@ -176,5 +176,6 @@ workflow {
         outgroups_csv,
         tree,
         colors,
+        download_count
     )
 }

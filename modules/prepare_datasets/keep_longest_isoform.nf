@@ -5,7 +5,8 @@ process KEEP_LONGEST_ISOFORM {
     tuple val(name), val(meta), path(genome), path(gff)
 
     output:
-    tuple val(name), val(meta), path("${name}.fa"), path("${name}.gff")
+    tuple val(name), val(meta), path("${name}.fa"), emit: fasta
+    tuple val(name), val(meta), path("${name}.gff"), emit: gff
 
     script:
     """
