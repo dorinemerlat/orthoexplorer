@@ -4,13 +4,13 @@ import argparse
 import os
 import re
 
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
 import yaml
 
 
 def read_table(path):
-    """Read a tab-separated table as strings and replace missing values by empty strings."""
+    """Read a tab-separated table as strings and replace missing values with empty strings."""
     return pd.read_csv(path, sep="\t", dtype=str).fillna("")
 
 
@@ -28,53 +28,53 @@ def split_genes(cell):
     return [gene.strip() for gene in cell.split(",") if gene.strip()]
 
 
-def read_taxonomy(path, groups):
+def read_taxonomy(path, clades):
     """
-    Read taxonomy table and return:
-    group_name -> list of species in this group.
+    Read the taxonomy table and return clade -> species mappings.
 
-    Also checks that no species belongs to more than one requested group.
+    Each requested clade is searched across all taxonomy columns except the
+    species-name column. A species cannot belong to more than one requested clade.
     """
     taxonomy = read_table(path)
-    taxonomy.columns = [col.strip() for col in taxonomy.columns]
+    taxonomy.columns = [column.strip() for column in taxonomy.columns]
 
-    if "specie" not in taxonomy.columns:
-        raise ValueError("The taxonomy table must contain a 'specie' column.")
+    if "name" not in taxonomy.columns:
+        raise ValueError("The taxonomy table must contain a 'name' column.")
 
-    group_to_species = {}
+    taxonomy["name"] = taxonomy["name"].astype(str).str.strip()
+    taxonomy_columns = [column for column in taxonomy.columns if column != "name"]
+    clade_to_species = {}
 
-    for group in groups:
-        mask = (taxonomy.astype(str) == group).any(axis=1)
-        species = taxonomy.loc[mask, "specie"].tolist()
+    for clade in clades:
+        mask = taxonomy[taxonomy_columns].astype(str).eq(clade).any(axis=1)
+        species = taxonomy.loc[mask, "name"].tolist()
 
         if not species:
-            raise ValueError(f"No species found for group: {group}")
+            raise ValueError(f"No species found for clade: {clade}")
 
-        group_to_species[group] = species
+        clade_to_species[clade] = species
 
-    species_to_groups = {}
-
-    for group, species_list in group_to_species.items():
+    species_to_clades = {}
+    for clade, species_list in clade_to_species.items():
         for species in species_list:
-            species_to_groups.setdefault(species, []).append(group)
+            species_to_clades.setdefault(species, []).append(clade)
 
     duplicated = {
-        species: assigned_groups
-        for species, assigned_groups in species_to_groups.items()
-        if len(assigned_groups) > 1
+        species: assigned_clades
+        for species, assigned_clades in species_to_clades.items()
+        if len(assigned_clades) > 1
     }
 
     if duplicated:
         message = "\n".join(
-            f"{species}: {', '.join(assigned_groups)}"
-            for species, assigned_groups in duplicated.items()
+            f"{species}: {', '.join(assigned_clades)}"
+            for species, assigned_clades in duplicated.items()
         )
         raise ValueError(
-            "Some species belong to more than one requested group:\n"
-            + message
+            "Some species belong to more than one requested clade:\n" + message
         )
 
-    return group_to_species
+    return clade_to_species
 
 
 def read_gene_counts(path):
@@ -83,11 +83,10 @@ def read_gene_counts(path):
     gene_counts = gene_counts.rename(columns={gene_counts.columns[0]: "Orthogroup"})
     gene_counts = gene_counts.drop(columns=["Total"], errors="ignore")
 
-    for col in gene_counts.columns:
-        if col != "Orthogroup":
-            gene_counts[col] = pd.to_numeric(
-                gene_counts[col],
-                errors="coerce"
+    for column in gene_counts.columns:
+        if column != "Orthogroup":
+            gene_counts[column] = pd.to_numeric(
+                gene_counts[column], errors="coerce"
             ).fillna(0).astype(int)
 
     return gene_counts
@@ -97,60 +96,73 @@ def read_orthogroups(path):
     """Read Orthogroups.tsv as a gene table."""
     orthogroups = read_table(path)
     orthogroups = orthogroups.rename(columns={orthogroups.columns[0]: "Orthogroup"})
-    orthogroups = orthogroups.drop(columns=["Total"], errors="ignore")
-    return orthogroups
+    return orthogroups.drop(columns=["Total"], errors="ignore")
 
 
-def build_presence_absence_table(gene_counts, group_to_species):
+def validate_species_columns(gene_counts, orthogroups, clade_to_species):
+    """Check that all selected species are present in both OrthoFinder tables."""
+    selected_species = {
+        species
+        for species_list in clade_to_species.values()
+        for species in species_list
+    }
+
+    missing_gene_counts = sorted(selected_species - set(gene_counts.columns))
+    missing_orthogroups = sorted(selected_species - set(orthogroups.columns))
+
+    messages = []
+    if missing_gene_counts:
+        messages.append(
+            "Species missing from the gene-count table:\n"
+            + "\n".join(missing_gene_counts)
+        )
+    if missing_orthogroups:
+        messages.append(
+            "Species missing from the orthogroups table:\n"
+            + "\n".join(missing_orthogroups)
+        )
+
+    if messages:
+        raise ValueError("\n\n".join(messages))
+
+
+def build_presence_absence_table(gene_counts, clade_to_species):
     """
-    Build an orthogroup x group presence/absence table.
+    Build an orthogroup x clade presence/absence table.
 
-    A group is coded as 1 if the orthogroup is present in at least
-    one species of that group.
-
-    The column n_present_species_in_selected_groups counts the number of
-    species, not the number of genes. Paralogs in the same species count as
-    one present species.
+    A clade is present when an orthogroup occurs in at least one species from
+    that clade. Paralogs in one species count as one species-level presence.
     """
     rows = []
 
     for _, row in gene_counts.iterrows():
-        out_row = {"Orthogroup": row["Orthogroup"]}
-        present_groups = []
+        output_row = {"Orthogroup": row["Orthogroup"]}
+        present_clades = []
         total_present_species = 0
 
-        for group, species_list in group_to_species.items():
-            n_present = 0
-
-            for species in species_list:
-                if species not in gene_counts.columns:
-                    continue
-
-                if row[species] > 0:
-                    n_present += 1
-
+        for clade, species_list in clade_to_species.items():
+            n_present = sum(row[species] > 0 for species in species_list)
             total_present_species += n_present
-
             is_present = int(n_present >= 1)
-            out_row[group] = is_present
-            out_row[f"{group}_n_species"] = n_present
+
+            output_row[clade] = is_present
+            output_row[f"{clade}_n_species"] = n_present
 
             if is_present:
-                present_groups.append(group)
+                present_clades.append(clade)
 
-        out_row["n_present_species_in_selected_groups"] = total_present_species
-        out_row["Intersection"] = "&".join(present_groups) if present_groups else "None"
-
-        rows.append(out_row)
+        output_row["n_present_species_in_selected_clades"] = total_present_species
+        output_row["Intersection"] = "&".join(present_clades) if present_clades else "None"
+        rows.append(output_row)
 
     return pd.DataFrame(rows)
 
 
 def remove_single_species_orthogroups(presence_absence):
-    """Remove orthogroups present in only one species among selected groups."""
+    """Remove orthogroups present in only one species among the selected clades."""
     return (
         presence_absence[
-            presence_absence["n_present_species_in_selected_groups"] > 1
+            presence_absence["n_present_species_in_selected_clades"] > 1
         ]
         .copy()
         .reset_index(drop=True)
@@ -168,7 +180,7 @@ def count_intersections(presence_absence):
 
 
 def remove_none_intersection(intersection_counts):
-    """Remove orthogroups not assigned to any requested group."""
+    """Remove orthogroups not assigned to any requested clade."""
     return (
         intersection_counts[intersection_counts["Intersection"] != "None"]
         .copy()
@@ -190,54 +202,43 @@ def load_colors(path):
     return {str(key): str(value) for key, value in data.items()}
 
 
-def sort_intersections_logically(intersection_counts, groups):
-    """
-    Sort intersections by:
-    1. number of groups in the intersection;
-    2. user-provided group order.
-    """
-    group_order = {group: i for i, group in enumerate(groups)}
+def sort_intersections_logically(intersection_counts, clades):
+    """Sort intersections by intersection size and requested clade order."""
+    clade_order = {clade: index for index, clade in enumerate(clades)}
 
     def sort_key(intersection):
         members = intersection.split("&")
-        members_order = [group_order[group] for group in members]
-        return (len(members), members_order)
+        return len(members), [clade_order[member] for member in members]
 
     ordered = intersection_counts.copy()
     ordered["sort_key"] = ordered["Intersection"].apply(sort_key)
 
     return (
-        ordered
-        .sort_values("sort_key")
+        ordered.sort_values("sort_key")
         .drop(columns="sort_key")
         .reset_index(drop=True)
     )
 
 
-def write_intersection_gene_files(orthogroups, presence_absence, group_to_species, outdir):
+def write_intersection_gene_files(
+    orthogroups, presence_absence, clade_to_species, outdir
+):
     """
-    Write gene lists for each UpSet intersection.
+    Write gene lists for each intersection.
 
-    Output columns:
-    intersection, orthogroup, species, gene
-
-    If several paralogs are present for the same species and orthogroup,
-    one line is written per gene.
+    Output columns are intersection, orthogroup, species and gene. Paralogs are
+    written on separate lines.
     """
     output_dir = os.path.join(outdir, "intersection_gene_lists")
     os.makedirs(output_dir, exist_ok=True)
 
     selected_species = []
-    for species_list in group_to_species.values():
+    for species_list in clade_to_species.values():
         selected_species.extend(species_list)
-
     selected_species = list(dict.fromkeys(selected_species))
 
-    intersection_by_og = dict(
-        zip(
-            presence_absence["Orthogroup"],
-            presence_absence["Intersection"],
-        )
+    intersection_by_orthogroup = dict(
+        zip(presence_absence["Orthogroup"], presence_absence["Intersection"])
     )
 
     all_rows = []
@@ -245,34 +246,24 @@ def write_intersection_gene_files(orthogroups, presence_absence, group_to_specie
 
     for _, row in orthogroups.iterrows():
         orthogroup = row["Orthogroup"]
-        intersection = intersection_by_og.get(orthogroup, "None")
+        intersection = intersection_by_orthogroup.get(orthogroup, "None")
 
         if intersection == "None":
             continue
 
         for species in selected_species:
-            if species not in orthogroups.columns:
-                continue
-
-            genes = split_genes(row[species])
-
-            for gene in genes:
-                out_row = {
+            for gene in split_genes(row[species]):
+                output_row = {
                     "intersection": intersection,
                     "orthogroup": orthogroup,
                     "species": species,
                     "gene": gene,
                 }
+                all_rows.append(output_row)
+                rows_by_intersection.setdefault(intersection, []).append(output_row)
 
-                all_rows.append(out_row)
-                rows_by_intersection.setdefault(intersection, []).append(out_row)
-
-    all_genes = pd.DataFrame(
-        all_rows,
-        columns=["intersection", "orthogroup", "species", "gene"],
-    )
-
-    all_genes.to_csv(
+    columns = ["intersection", "orthogroup", "species", "gene"]
+    pd.DataFrame(all_rows, columns=columns).to_csv(
         os.path.join(outdir, "intersection_genes_all.tsv"),
         sep="\t",
         index=False,
@@ -280,44 +271,35 @@ def write_intersection_gene_files(orthogroups, presence_absence, group_to_specie
 
     for intersection, rows in rows_by_intersection.items():
         filename = safe_name(intersection) + ".tsv"
-        path = os.path.join(output_dir, filename)
+        pd.DataFrame(rows, columns=columns).to_csv(
+            os.path.join(output_dir, filename),
+            sep="\t",
+            index=False,
+        )
 
-        pd.DataFrame(
-            rows,
-            columns=["intersection", "orthogroup", "species", "gene"],
-        ).to_csv(path, sep="\t", index=False)
 
-
-def plot_venn(presence_absence, groups, colors, outdir):
+def plot_venn(presence_absence, clades, colors, outdir):
     """Plot a Venn diagram from the orthogroup presence/absence matrix."""
     try:
         from venn import venn
-    except ImportError as e:
+    except ImportError as error:
         raise ImportError(
-            "The 'venn' package is required. Install it with: pip install venn"
-        ) from e
+            "The 'venn' package is required. Install it with: mamba install -c conda-forge venn"
+        ) from error
 
-    dataset_dict = {}
-
-    for group in groups:
-        dataset_dict[group] = set(
-            presence_absence.loc[
-                presence_absence[group] == 1,
-                "Orthogroup"
-            ]
+    datasets = {
+        clade: set(
+            presence_absence.loc[presence_absence[clade] == 1, "Orthogroup"]
         )
+        for clade in clades
+    }
 
     fig, ax = plt.subplots(figsize=(10, 8))
-
-    venn_colors = []
-    for group in groups:
-        if group in colors:
-            venn_colors.append(colors[group])
-
-    cmap = venn_colors if len(venn_colors) == len(groups) else "Set3"
+    venn_colors = [colors[clade] for clade in clades if clade in colors]
+    cmap = venn_colors if len(venn_colors) == len(clades) else "Set3"
 
     venn(
-        dataset_dict,
+        datasets,
         fmt="{size}",
         cmap=cmap,
         fontsize=8,
@@ -325,9 +307,9 @@ def plot_venn(presence_absence, groups, colors, outdir):
         ax=ax,
     )
 
-    for ext in ["png", "pdf", "svg"]:
+    for extension in ["png", "pdf", "svg"]:
         fig.savefig(
-            os.path.join(outdir, f"venn_orthogroups.{ext}"),
+            os.path.join(outdir, f"venn_orthogroups.{extension}"),
             dpi=300,
             bbox_inches="tight",
         )
@@ -335,54 +317,35 @@ def plot_venn(presence_absence, groups, colors, outdir):
     plt.close(fig)
 
 
-def plot_upset(presence_absence, groups, outdir):
-    """
-    Plot an UpSet plot from the orthogroup presence/absence matrix.
-
-    Intersections are ordered logically:
-    single groups -> pairs -> triplets -> quadruplets -> all groups.
-    """
+def plot_upset(presence_absence, clades, outdir):
+    """Plot an UpSet plot ordered by intersection size and clade order."""
     try:
         from upsetplot import UpSet, from_memberships
-    except ImportError as e:
+    except ImportError as error:
         raise ImportError(
-            "The 'upsetplot' package is required. Install it with: pip install upsetplot"
-        ) from e
+            "The 'upsetplot' package is required. Install it with: mamba install -c conda-forge upsetplot"
+        ) from error
 
     intersection_counts = (
-        presence_absence
-        .groupby("Intersection", sort=False)
+        presence_absence.groupby("Intersection", sort=False)
         .size()
         .reset_index(name="count")
     )
-
     intersection_counts = remove_none_intersection(intersection_counts)
-
-    intersection_counts = sort_intersections_logically(
-        intersection_counts=intersection_counts,
-        groups=groups,
-    )
+    intersection_counts = sort_intersections_logically(intersection_counts, clades)
 
     memberships = []
     counts = []
 
     for _, row in intersection_counts.iterrows():
-        intersection = row["Intersection"]
-        members = intersection.split("&")
-        members = [group for group in groups if group in members]
-
-        memberships.append(members)
+        members = row["Intersection"].split("&")
+        memberships.append([clade for clade in clades if clade in members])
         counts.append(row["count"])
 
-    upset_data = from_memberships(
-        memberships,
-        data=counts,
-    )
-
-    upset_data = upset_data.reorder_levels(list(reversed(groups)))
+    upset_data = from_memberships(memberships, data=counts)
+    upset_data = upset_data.reorder_levels(list(reversed(clades)))
 
     fig = plt.figure(figsize=(12, 7))
-
     upset = UpSet(
         upset_data,
         subset_size="sum",
@@ -390,12 +353,11 @@ def plot_upset(presence_absence, groups, outdir):
         sort_by="input",
         sort_categories_by=None,
     )
-
     upset.plot(fig=fig)
 
-    for ext in ["png", "pdf", "svg"]:
+    for extension in ["png", "pdf", "svg"]:
         fig.savefig(
-            os.path.join(outdir, f"upset_orthogroups.{ext}"),
+            os.path.join(outdir, f"upset_orthogroups.{extension}"),
             dpi=300,
             bbox_inches="tight",
         )
@@ -407,45 +369,60 @@ def main():
     parser = argparse.ArgumentParser(
         description="Create Venn and UpSet plots from OrthoFinder orthogroups."
     )
-
-    parser.add_argument("--gene-counts", required=True, help="Orthogroups.GeneCount.tsv")
-    parser.add_argument("--orthogroups", required=True, help="Orthogroups.tsv")
-    parser.add_argument("--taxonomy", required=True, help="taxonomy_table.tsv")
-    parser.add_argument("--groups", required=True, help="Comma-separated group names")
-    parser.add_argument("--outdir", required=True, help="Output directory")
-    parser.add_argument("--colors-yaml", default=None, help="Optional colors.yaml file")
+    parser.add_argument(
+        "--gene-counts",
+        required=True,
+        help="Reformatted Orthogroups.GeneCount.tsv file.",
+    )
+    parser.add_argument(
+        "--orthogroups",
+        required=True,
+        help="Reformatted Orthogroups.tsv file.",
+    )
+    parser.add_argument(
+        "--taxonomy",
+        required=True,
+        help="Taxonomy table containing a 'name' column.",
+    )
+    parser.add_argument(
+        "--clades",
+        required=True,
+        help="Comma-separated clade names.",
+    )
+    parser.add_argument("--outdir", required=True, help="Output directory.")
+    parser.add_argument(
+        "--colors",
+        default=None,
+        help="Optional flat YAML file mapping clade names to colors.",
+    )
     parser.add_argument(
         "--keep-single-species",
         action="store_true",
-        help=(
-            "Keep orthogroups present in only one species among the selected groups. "
-            "By default, orthogroups present in only one selected species are removed."
-        ),
+        help="Keep orthogroups present in only one selected species.",
     )
-
     args = parser.parse_args()
 
     os.makedirs(args.outdir, exist_ok=True)
 
-    groups = [group.strip() for group in args.groups.split(",") if group.strip()]
+    clades = [clade.strip() for clade in args.clades.split(",") if clade.strip()]
+    if len(clades) < 2:
+        raise ValueError("--clades must contain at least two comma-separated clades.")
 
-    if len(groups) < 2:
-        raise ValueError("--groups must contain at least two groups.")
-
-    group_to_species = read_taxonomy(args.taxonomy, groups)
+    clade_to_species = read_taxonomy(args.taxonomy, clades)
     gene_counts = read_gene_counts(args.gene_counts)
     orthogroups = read_orthogroups(args.orthogroups)
+    validate_species_columns(gene_counts, orthogroups, clade_to_species)
 
     presence_absence = build_presence_absence_table(
         gene_counts=gene_counts,
-        group_to_species=group_to_species,
+        clade_to_species=clade_to_species,
     )
 
     if not args.keep_single_species:
         presence_absence = remove_single_species_orthogroups(presence_absence)
 
     presence_absence.to_csv(
-        os.path.join(args.outdir, "orthogroup_presence_absence_by_group.tsv"),
+        os.path.join(outdir := args.outdir, "orthogroup_presence_absence_by_clade.tsv"),
         sep="\t",
         index=False,
     )
@@ -453,12 +430,11 @@ def main():
     intersection_counts = count_intersections(presence_absence)
     intersection_counts = remove_none_intersection(intersection_counts)
     intersection_counts = sort_intersections_logically(
-        intersection_counts=intersection_counts,
-        groups=groups,
+        intersection_counts,
+        clades,
     )
-
     intersection_counts.to_csv(
-        os.path.join(args.outdir, "intersection_counts.tsv"),
+        os.path.join(outdir, "intersection_counts.tsv"),
         sep="\t",
         index=False,
     )
@@ -466,26 +442,15 @@ def main():
     write_intersection_gene_files(
         orthogroups=orthogroups,
         presence_absence=presence_absence,
-        group_to_species=group_to_species,
-        outdir=args.outdir,
+        clade_to_species=clade_to_species,
+        outdir=outdir,
     )
 
-    colors = load_colors(args.colors_yaml)
+    colors = load_colors(args.colors)
+    plot_upset(presence_absence, clades, outdir)
+    plot_venn(presence_absence, clades, colors, outdir)
 
-    plot_upset(
-        presence_absence=presence_absence,
-        groups=groups,
-        outdir=args.outdir,
-    )
-
-    plot_venn(
-        presence_absence=presence_absence,
-        groups=groups,
-        colors=colors,
-        outdir=args.outdir,
-    )
-
-    print(f"Done. Results written in: {args.outdir}")
+    print(f"Done. Results written in: {outdir}")
 
 
 if __name__ == "__main__":

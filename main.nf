@@ -41,7 +41,7 @@ def format_dataset_row(row, dataset_type, source_csv) {
 
     def id = name
         .toLowerCase()
-        .replaceAll(/[^a-z0-9]+/, '-')
+        .replaceAll(/[^a-z0-9]/, '-')
         .replaceAll(/^-|-$/, '')
 
     def meta = [
@@ -89,6 +89,8 @@ workflow {
         }
     
     tree = Channel.fromPath(params.tree, checkIfExists: true)
+
+    colors = params.colors ? Channel.fromPath(params.colors, checkIfExists: true) : null
 
     all_datasets = ingroups
         .concat(outgroups)
@@ -166,13 +168,13 @@ workflow {
             [ id, meta ]
         }
         .set { datasets_to_download }
-
+    
     ORTHOEXPLORER(
         supplied_datasets,
         datasets_to_download,
         ingroups_csv,
         outgroups_csv,
         tree,
-        colors_yaml,
+        colors,
     )
 }

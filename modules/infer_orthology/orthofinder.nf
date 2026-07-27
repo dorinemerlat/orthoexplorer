@@ -5,8 +5,10 @@ process ORTHOFINDER {
     path proteomes
 
     output:
-    tuple path("Orthogroups.tsv"), path("Orthogroups.GeneCount.tsv"), path("Orthogroups_UnassignedGenes.tsv"), emit: results
-    path "SpeciesTree_rooted.txt", emit: species_tree
+    path("Orthogroups.tsv"), emit: orthogroups
+    path("Orthogroups.GeneCount.tsv"), emit: gene_count
+    path("Orthogroups_UnassignedGenes.tsv"), emit: unassigned_genes
+    path "SpeciesTree_rooted.txt", emit: tree
     path "orthofinder_results", emit: full_results
 
     script:

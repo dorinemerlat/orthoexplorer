@@ -25,3 +25,5 @@ tree_with_46_species.treefile
 data/colors.yaml
 nextflow_myriapoda.config
 docs/phyloconstructor_nf-metro.mmd
+cache_best/
+nextflow_myriapoda_best.config

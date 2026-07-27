@@ -4,31 +4,44 @@ include { VENN_UPSET_ORTHOGROUPS        } from "${projectDir}/modules/downstream
 workflow DOWNSTREAM_ANALYSIS {
 
     take:
-    orthofinder_results
-    taxonomy
+    orthogroups
+    gene_count
+    unassigned_genes
     tree
-    species_csv
-    outgroups_csv
-    colors_yaml
+    taxonomy
+    colors
 
     main:
-    analysis_inputs = orthofinder_results
+    conservation_analysis_inputs = orthogroups
+        .combine(gene_count)
+        .combine(unassigned_genes)
+        .combine(tree)
         .combine(taxonomy)
-        .map { orthogroups, gene_count, unassigned_genes, taxonomy_file ->
-            [ orthogroups, gene_count, unassigned_genes, taxonomy_file, species_csv, outgroups_csv, colors_yaml ]
+        .combine(colors)
+        .map { orthogroups, gene_count, unassigned_genes, tree, taxonomy, colors ->
+            ['with_all_clades', orthogroups, gene_count, unassigned_genes, tree, taxonomy, colors, null ]
         }
 
-    ASSIGN_GENE_CONSERVATION_RANK(analysis_inputs)
+    if (params.clades) {
+        conservation_analysis_inputs_with_clades = conservation_analysis_inputs
+            .map { status, orthogroups, gene_count, unassigned_genes, tree, taxonomy, colors, clades ->
+                ['with_user_clades', orthogroups, gene_count, unassigned_genes, tree, taxonomy, colors, params.clades ]
+            }
+        
+        conservation_analysis_inputs = conservation_analysis_inputs.concat(conservation_analysis_inputs_with_clades)
 
-    pangenome_inputs = orthofinder_results
-        .combine(taxonomy)
-        .map {orthogroups, gene_count, unassigned_genes, taxonomy_file ->
-            [ orthogroups, gene_count, taxonomy_file, species_csv, outgroups_csv, colors_yaml, params.clades ] 
+    } 
+
+    ASSIGN_GENE_CONSERVATION_RANK(conservation_analysis_inputs)
+
+    pangenome_analysis_inputs = conservation_analysis_inputs_with_clades
+        .map { status, orthogroups, gene_count, unassigned_genes, tree, taxonomy, colors, clades ->
+            [orthogroups, gene_count, taxonomy, colors, clades]
         }
 
-    VENN_UPSET_ORTHOGROUPS(pangenome_inputs)
+    VENN_UPSET_ORTHOGROUPS(pangenome_analysis_inputs)
 
-    emit:
-    conservation = ASSIGN_GENE_CONSERVATION_RANK.out.results
-    pangenome     = VENN_UPSET_ORTHOGROUPS.out.results
+    // emit:
+    // conservation = ASSIGN_GENE_CONSERVATION_RANK.out.results
+    // pangenome     = VENN_UPSET_ORTHOGROUPS.out.results
 }

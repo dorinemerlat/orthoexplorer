@@ -1,14 +1,34 @@
-include { ORTHOFINDER } from "${projectDir}/modules/infer_orthology/orthofinder"
+include { ORTHOFINDER               } from "${projectDir}/modules/infer_orthology/orthofinder"
+include { NORMALIZE_SPECIES_NAMES   } from "${projectDir}/modules/infer_orthology/normalize_species_names"
 
 workflow INFER_ORTHOLOGY {
 
     take:
     proteomes
     user_tree
+    taxonomy 
 
     main:
     ORTHOFINDER(proteomes)
     
+    ORTHOFINDER.out.orthogroups
+        .concat(ORTHOFINDER.out.gene_count, ORTHOFINDER.out.unassigned_genes, ORTHOFINDER.out.tree)
+        .set { orthofinder_results }
+
+    NORMALIZE_SPECIES_NAMES(orthofinder_results, taxonomy)
+
+    NORMALIZE_SPECIES_NAMES.out
+        .filter { file -> file.name == "Orthogroups.tsv" }
+        .set { orthogroups }
+
+    NORMALIZE_SPECIES_NAMES.out
+        .filter { file -> file.name == "Orthogroups.GeneCount.tsv" }
+        .set { gene_count }
+
+    NORMALIZE_SPECIES_NAMES.out
+        .filter { file -> file.name == "Orthogroups_UnassignedGenes.tsv" }
+        .set { unassigned_genes }
+
     /*
      * Select the tree used by downstream analyses.
      *
@@ -18,13 +38,17 @@ workflow INFER_ORTHOLOGY {
     if (params.tree) {
         println "Using user-provided tree for downstream analyses"
         tree = user_tree
+
     } else {
         println "Using OrthoFinder-generated tree for downstream analyses"
-        tree = ORTHOFINDER.out.species_tree
-    }
-
-    tree.view()
+        NORMALIZE_SPECIES_NAMES.out
+            .filter { file -> file.name == "SpeciesTree_rooted.txt" }
+            .set { tree }
+    }   
+            
     emit:
-    orthofinder_results = ORTHOFINDER.out.results
+    orthogroups = orthogroups
+    gene_count = gene_count
+    unassigned_genes = unassigned_genes
     tree = tree
 }

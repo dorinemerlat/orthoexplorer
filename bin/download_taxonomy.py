@@ -194,6 +194,7 @@ def read_input_csv(input_file):
             "id",
             "name",
             "taxid",
+            "group",
         }
 
         missing_columns = required_columns - set(
@@ -210,6 +211,7 @@ def read_input_csv(input_file):
             dataset_id = (row.get("id") or "").strip()
             name = (row.get("name") or "").strip()
             taxid = (row.get("taxid") or "").strip()
+            group = (row.get("group") or "").strip().lower()
 
             if not dataset_id:
                 raise ValueError(
@@ -239,6 +241,13 @@ def read_input_csv(input_file):
                     f"'{taxid}' for '{dataset_id}'"
                 )
 
+            if group not in {"ingroup", "outgroup"}:
+                raise ValueError(
+                    f"Line {line_number}: invalid group "
+                    f"'{group}' for '{dataset_id}'. "
+                    "Expected 'ingroup' or 'outgroup'."
+                )
+
             seen_ids.add(dataset_id)
 
             datasets.append(
@@ -246,6 +255,7 @@ def read_input_csv(input_file):
                     "id": dataset_id,
                     "name": name,
                     "taxid": taxid,
+                    "group": group,
                 }
             )
 
@@ -271,6 +281,7 @@ def write_output(output_file, results):
         "name",
         "specie_name",
         "taxid",
+        "group",
         *used_ranks,
     ]
 
@@ -295,6 +306,7 @@ def write_output(output_file, results):
                 "name": result["name"],
                 "specie_name": result["specie_name"],
                 "taxid": result["taxid"],
+                "group": result["group"],
             }
 
             for rank in used_ranks:
@@ -325,6 +337,7 @@ def main():
         dataset_id = dataset["id"]
         input_name = dataset["name"]
         input_taxid = dataset["taxid"]
+        input_group = dataset["group"]
 
         try:
             taxonomy = fetch_taxonomy(
@@ -339,6 +352,7 @@ def main():
                     "name": input_name,
                     "specie_name": taxonomy["specie_name"],
                     "taxid": taxonomy["taxid"],
+                    "group": input_group,
                     "lineage": taxonomy["lineage"],
                 }
             )
@@ -364,6 +378,7 @@ def main():
                     "name": input_name,
                     "specie_name": "",
                     "taxid": input_taxid,
+                    "group": input_group,
                     "lineage": {},
                 }
             )

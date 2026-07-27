@@ -1,46 +1,37 @@
 process ASSIGN_GENE_CONSERVATION_RANK {
-    tag '' 
+    tag "$status"
+    scratch false
 
     input:
-    tuple path(orthogroups), path(gene_count), path(unassigned_genes), path(taxonomy), path(species_csv), path(outgroups_csv), path(colors_yaml)
+    tuple val(status), path(orthogroups), path(gene_count), path(unassigned_genes), path(tree), path(taxonomy), path(colors_yaml), val(clades)
 
     output:
-    path "gene_conservation", emit: results
+    path "$status"
 
     script:
+    clades_arg = status == "with_user_clades" && clades ? "--clades '${clades}'" : ""
+
     """
-    mkdir -p gene_conservation
+    python_path="/shared/projects/metainvert/orthoexplorer/envs/orthoexplorer/bin/python"
+    mkdir -p "$status"
 
-    reformat_orthofinder_tables.py \
-        --orthogroups ${orthogroups} \
-        --gene-counts ${gene_count} \
-        --unassigned ${unassigned_genes} \
-        --species ${species_csv} \
-        --outgroups ${outgroups_csv} \
-        --output-prefix reformatted
-
-    tail -n +2 ${outgroups_csv} \
-        | cut -d',' -f1 \
-        | sed '/^[[:space:]]*\$/d' \
-        > outgroups_taxid.txt
-
-    assign_gene_conservation_rank.py \
-        --gene-counts reformatted.Orthogroups.GeneCount.tsv \
-        --orthogroups reformatted.Orthogroups.tsv \
-        --unassigned reformatted.Orthogroups_UnassignedGenes.tsv \
-        --taxonomy ${taxonomy} \
-        --outdir gene_conservation \
-        --outgroups outgroups_taxid.txt \
-        --colors ${colors_yaml} \
-        --reorder-table
+    \$python_path /shared/projects/metainvert/orthoexplorer/bin/assign_gene_conservation_rank.py \
+        --gene-counts "${gene_count}" \
+        --orthogroups "${orthogroups}" \
+        --unassigned "${unassigned_genes}" \
+        --tree "${tree}" \
+        --taxonomy "${taxonomy}" \
+        --outdir "$status" \
+        --colors "${colors_yaml}" \
+        ${clades_arg}
     """
 
     stub:
     """
-    reformat_orthofinder_tables.py --help >/dev/null
+    conda activate ${projectDir}/envs/orthoexplorer
     assign_gene_conservation_rank.py --help >/dev/null
 
-    mkdir -p gene_conservation
-    touch gene_conservation/.stub
+    mkdir -p "$status"
+    touch "$status/.stub"
     """
 }
