@@ -74,6 +74,15 @@ workflow PREPARE_DATASETS {
         .set { all_datasets }
 
     /*
+    * Join the canonical protein sequences with the GO-annotated GFF files for each supplied genome.
+    */
+    all_datasets
+        .map { id, meta, protein_fasta, go_tsv ->
+            [ id, meta, go_tsv ]
+        }
+        .set { annotations }
+
+    /* 
      * OrthoFinder only needs the protein FASTA files.
      */
     all_datasets
@@ -86,7 +95,7 @@ workflow PREPARE_DATASETS {
     DOWNLOAD_TAXONOMY(ingroups_csv, outgroups_csv)
 
     emit:
-    datasets = all_datasets
+    annotations = annotations
     proteomes = all_proteomes
     taxonomy = DOWNLOAD_TAXONOMY.out
 }

@@ -24,7 +24,8 @@ workflow ORTHOEXPLORER {
     INFER_ORTHOLOGY(
         PREPARE_DATASETS.out.proteomes,
         tree,
-        PREPARE_DATASETS.out.taxonomy
+        PREPARE_DATASETS.out.taxonomy,
+        PREPARE_DATASETS.out.annotations
     )
 
     DOWNSTREAM_ANALYSIS(
@@ -32,9 +33,8 @@ workflow ORTHOEXPLORER {
         INFER_ORTHOLOGY.out.gene_count,
         INFER_ORTHOLOGY.out.unassigned_genes,
         INFER_ORTHOLOGY.out.tree,
-        PREPARE_DATASETS.out.datasets,
         PREPARE_DATASETS.out.taxonomy,
-        colors,
+        colors
     )
 
     // emit:

@@ -6,7 +6,13 @@ process VENN_UPSET_ORTHOGROUPS {
     tuple path(orthogroups), path(gene_count), path(taxonomy), path(colors_yaml), val(clades)
 
     output:
-    path "pangenome", emit: results
+    path("pangenome/eligible_orthogroups.txt"), emit: eligible_orthogroups
+    path("pangenome/intersection_counts.tsv"), emit: intersection_counts
+    path("pangenome/intersection_gene_lists"), emit: intersection_gene_lists
+    path("pangenome/intersection_genes_all.tsv"), emit: intersection_genes
+    path("pangenome/orthogroup_presence_absence_by_clade.tsv"), emit: presence_absence
+    path("pangenome/upset_orthogroups.{png,pdf,svg}"), emit: upset
+    path("pangenome/venn_orthogroups.{png,pdf,svg}"), emit: venn
 
     script:
     if (!clades) {

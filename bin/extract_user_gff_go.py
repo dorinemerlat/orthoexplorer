@@ -13,6 +13,7 @@ GO_PATTERN = re.compile(r"GO:\d{7}")
 
 OUTPUT_COLUMNS = [
     "specie_name",
+    "id",
     "gene_id",
     "gene_name",
     "product",

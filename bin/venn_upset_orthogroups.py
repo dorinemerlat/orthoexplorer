@@ -278,6 +278,27 @@ def write_intersection_gene_files(
         )
 
 
+def write_eligible_orthogroups(presence_absence, outdir):
+    """Write the orthogroups defining the UpSet enrichment universe."""
+    eligible_orthogroups = (
+        presence_absence.loc[
+            presence_absence["Intersection"] != "None",
+            ["Orthogroup"],
+        ]
+        .drop_duplicates()
+        .sort_values("Orthogroup")
+        .reset_index(drop=True)
+    )
+
+    eligible_orthogroups.to_csv(
+        os.path.join(outdir, "eligible_orthogroups.txt"),
+        index=False,
+        header=False,
+    )
+
+    return len(eligible_orthogroups)
+
+
 def plot_venn(presence_absence, clades, colors, outdir):
     """Plot a Venn diagram from the orthogroup presence/absence matrix."""
     try:
@@ -425,6 +446,17 @@ def main():
         os.path.join(outdir := args.outdir, "orthogroup_presence_absence_by_clade.tsv"),
         sep="\t",
         index=False,
+    )
+
+    presence_absence.to_csv(
+        os.path.join(outdir := args.outdir, "orthogroup_presence_absence_by_clade.tsv"),
+        sep="\t",
+        index=False,
+    )
+
+    eligible_orthogroup_count = write_eligible_orthogroups(
+        presence_absence=presence_absence,
+        outdir=outdir,
     )
 
     intersection_counts = count_intersections(presence_absence)

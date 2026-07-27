@@ -1,5 +1,7 @@
-include { ORTHOFINDER               } from "${projectDir}/modules/infer_orthology/orthofinder"
-include { NORMALIZE_SPECIES_NAMES   } from "${projectDir}/modules/infer_orthology/normalize_species_names"
+include { ORTHOFINDER                       } from "${projectDir}/modules/infer_orthology/orthofinder"
+include { NORMALIZE_SPECIES_NAMES           } from "${projectDir}/modules/infer_orthology/normalize_species_names"
+include { ADD_ORTHOGROUPS_TO_ANNOTATIONS    } from "${projectDir}/modules/downstream_analysis/add_orthogroups_to_annotations"
+include { ANNOTATE_ORTHOGROUP_FUNCTIONS     } from "${projectDir}/modules/infer_orthology/annotate_orthogroup_functions"
 
 workflow INFER_ORTHOLOGY {
 
@@ -7,6 +9,7 @@ workflow INFER_ORTHOLOGY {
     proteomes
     user_tree
     taxonomy 
+    annotations
 
     main:
     ORTHOFINDER(proteomes)
@@ -28,6 +31,21 @@ workflow INFER_ORTHOLOGY {
     NORMALIZE_SPECIES_NAMES.out
         .filter { file -> file.name == "Orthogroups_UnassignedGenes.tsv" }
         .set { unassigned_genes }
+
+    /*
+     * Add orthogroup information to the GO-annotated GFF files for each genome.
+     */
+    ADD_ORTHOGROUPS_TO_ANNOTATIONS(annotations, orthogroups)
+
+    /*
+     * Annotate orthogroups
+     */
+    ADD_ORTHOGROUPS_TO_ANNOTATIONS.out
+        .map { name, meta, annotations -> annotations }
+        .collect()
+        .set { annotations_with_orthogroups }
+
+    ANNOTATE_ORTHOGROUP_FUNCTIONS(annotations_with_orthogroups)
 
     /*
      * Select the tree used by downstream analyses.
