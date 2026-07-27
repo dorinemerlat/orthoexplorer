@@ -35,7 +35,7 @@ def format_dataset_row(row, dataset_type, source_csv) {
         or both be empty.
 
         fasta = ${fasta ?: '<empty>'}
-        gff   = ${gff   ?: '<empty>'}
+        gff   = ${gff ?: '<empty>'}
         """.stripIndent()
     }
 
@@ -51,7 +51,7 @@ def format_dataset_row(row, dataset_type, source_csv) {
         dataset_type : dataset_type
     ]
 
-    return [id, meta, fasta ?: null, gff   ?: null]
+    return [id, meta, fasta ?: null, gff ?: null]
 }
 
 
@@ -65,11 +65,23 @@ workflow {
         error "Missing required parameter: --outgroups"
     }
 
+    if (params.cafe_ratio_threshold == null) {
+        error "Missing required parameter: --cafe_ratio_threshold"
+    }
+
+    if (params.cafe_ratio_threshold <= 0) {
+        error "Parameter --cafe_ratio_threshold must be greater than 0"
+    }
+
+    if (!params.cafe_filter_keywords) {
+        error "Missing required parameter: --cafe_filter_keywords"
+    }
 
     ingroups_csv = file(params.ingroups, checkIfExists: true)
     outgroups_csv = file(params.outgroups, checkIfExists: true)
-    tree = params.tree ? file(params.tree, checkIfExists: true) : null
-    colors_yaml = params.colors ? file(params.colors, checkIfExists: true) : null
+    tree_file = params.tree ? file(params.tree, checkIfExists: true) : null
+    colors_file = params.colors ? file(params.colors, checkIfExists: true) : null
+    cafe_filter_keywords_file = file(params.cafe_filter_keywords, checkIfExists: true)
 
     /*
      * Read and validate the two input CSV files.
@@ -87,10 +99,10 @@ workflow {
         .map { row ->
             format_dataset_row(row, 'outgroup', outgroups_csv)
         }
-    
-    tree = Channel.fromPath(params.tree, checkIfExists: true)
 
-    colors = params.colors ? Channel.fromPath(params.colors, checkIfExists: true) : null
+    tree = tree_file ? Channel.value(tree_file) : Channel.value(null)
+    colors = colors_file ? Channel.value(colors_file) : Channel.value(null)
+    cafe_filter_keywords = Channel.value(cafe_filter_keywords_file)
 
     all_datasets = ingroups
         .concat(outgroups)
@@ -109,9 +121,8 @@ workflow {
         }
         .set { input_datasets }
 
-
     /*
-     * Print summary once before the workflow is launched.
+     * Print the input summary once before launching the workflow.
      */
     ingroups_count = ingroups.count()
     outgroups_count = outgroups.count()
@@ -133,9 +144,12 @@ workflow {
         ============================================================
         Ingroups table       : ${ingroups_csv}
         Outgroups table      : ${outgroups_csv}
-        Tree                 : ${params.tree ?: 'OrthoFinder species tree'}
+        Tree                 : ${tree_file ?: 'OrthoFinder species tree'}
         Groups               : ${params.clades ?: 'not specified'}
-        Colors               : ${colors_yaml ?: 'not specified'}
+        Colors               : ${colors_file ?: 'not specified'}
+
+        CAFE ratio threshold : ${params.cafe_ratio_threshold}
+        CAFE keyword file    : ${cafe_filter_keywords_file}
 
         Ingroups             : ${ingroup_n}
         Outgroups            : ${outgroup_n}
@@ -156,7 +170,7 @@ workflow {
      */
     input_datasets.supplied
         .map { id, meta, fasta, gff ->
-            [ id, meta, file(fasta, checkIfExists: true), file(gff, checkIfExists: true) ]
+            [id, meta, file(fasta, checkIfExists: true), file(gff, checkIfExists: true)]
         }
         .set { supplied_datasets }
 
@@ -165,16 +179,17 @@ workflow {
      */
     input_datasets.download
         .map { id, meta, fasta, gff ->
-            [ id, meta ]
+            [id, meta]
         }
         .set { datasets_to_download }
-    
+
     ORTHOEXPLORER(
         supplied_datasets,
         datasets_to_download,
         ingroups_csv,
         outgroups_csv,
         tree,
-        colors
+        colors,
+        cafe_filter_keywords
     )
 }

@@ -1,7 +1,9 @@
 include { ORTHOFINDER                       } from "${projectDir}/modules/infer_orthology/orthofinder"
 include { NORMALIZE_SPECIES_NAMES           } from "${projectDir}/modules/infer_orthology/normalize_species_names"
-include { ADD_ORTHOGROUPS_TO_ANNOTATIONS    } from "${projectDir}/modules/downstream_analysis/add_orthogroups_to_annotations"
+include { ADD_ORTHOGROUPS_TO_ANNOTATIONS    } from "${projectDir}/modules/infer_orthology/add_orthogroups_to_annotations"
 include { ANNOTATE_ORTHOGROUP_FUNCTIONS     } from "${projectDir}/modules/infer_orthology/annotate_orthogroup_functions"
+include { ADD_CAFE_FILTER_STATUS            } from "${projectDir}/modules/infer_orthology/add_cafe_filter_status"
+include { FILTER_LARGE_GENE_FAMILIES        } from "${projectDir}/modules/infer_orthology/filter_large_gene_families"
 
 workflow INFER_ORTHOLOGY {
 
@@ -10,6 +12,7 @@ workflow INFER_ORTHOLOGY {
     user_tree
     taxonomy 
     annotations
+    cafe_filter_keywords
 
     main:
     ORTHOFINDER(proteomes)
@@ -46,6 +49,17 @@ workflow INFER_ORTHOLOGY {
         .set { annotations_with_orthogroups }
 
     ANNOTATE_ORTHOGROUP_FUNCTIONS(annotations_with_orthogroups)
+
+    /*
+     * Add cafe filter status to the GO-annotated GFF files for each genome.
+     */
+    ADD_CAFE_FILTER_STATUS(ANNOTATE_ORTHOGROUP_FUNCTIONS.out.orthogroup_without_all_functions, cafe_filter_keywords, params.cafe_ratio_threshold)
+
+    /*
+     * Add cafe filter status to the GO-annotated GFF files for each genome.
+     */
+    max_copy_number = channel.of('100')
+    FILTER_LARGE_GENE_FAMILIES(ADD_CAFE_FILTER_STATUS.out, gene_count, max_copy_number)
 
     /*
      * Select the tree used by downstream analyses.

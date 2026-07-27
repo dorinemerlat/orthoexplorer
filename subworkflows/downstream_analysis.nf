@@ -39,7 +39,7 @@ workflow DOWNSTREAM_ANALYSIS {
             [orthogroups, gene_count, taxonomy, colors, clades]
         }
 
-    VENN_UPSET_ORTHOGROUPS(pangenome_analysis_inputs)
+    // VENN_UPSET_ORTHOGROUPS(pangenome_analysis_inputs)
 
     
     // emit:

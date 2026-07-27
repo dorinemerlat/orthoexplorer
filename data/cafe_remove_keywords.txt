@@ -1,0 +1,49 @@
+# Retrotransposon proteins
+retrovirus-related pol polyprotein
+gag-pol polyprotein
+pro-pol polyprotein
+rna-directed dna polymerase from transposon
+rna-directed dna polymerase from mobile element
+line-1 reverse transcriptase
+
+# Transposable elements
+retrotransposable element
+transposable element
+transposon-derived
+
+# Retrotransposons
+gypsy retrotransposon
+retrotranspos
+retrovirus
+retroelement
+gypsy
+copia
+line-1
+
+# Conserved TE proteins
+reverse transcriptase
+rna-directed dna polymerase
+pol polyprotein
+gag-pol
+pro-pol
+
+# DNA transposases
+mariner mos1 transposase
+piggybac transposable element
+tigger transposable element
+pogo transposable element
+
+# DNA transposon families
+piggybac
+mariner
+mos1
+pogo
+tigger
+tcb1
+tc3
+ty3
+
+# Generic terms (keep last)
+transposase
+transpos
+mobile element

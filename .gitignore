@@ -28,3 +28,5 @@ docs/phyloconstructor_nf-metro.mmd
 cache_best/
 nextflow_myriapoda_best.config
 amphibalanus-amphitrite_with_go.tsv
+cafe5.sbatch
+log

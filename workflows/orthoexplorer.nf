@@ -12,6 +12,7 @@ workflow ORTHOEXPLORER {
     outgroups_csv
     tree
     colors
+    cafe_filter_keywords
 
     main:
     PREPARE_DATASETS(
@@ -25,7 +26,8 @@ workflow ORTHOEXPLORER {
         PREPARE_DATASETS.out.proteomes,
         tree,
         PREPARE_DATASETS.out.taxonomy,
-        PREPARE_DATASETS.out.annotations
+        PREPARE_DATASETS.out.annotations,
+        cafe_filter_keywords
     )
 
     DOWNSTREAM_ANALYSIS(

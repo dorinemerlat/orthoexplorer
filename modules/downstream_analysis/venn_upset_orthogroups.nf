@@ -6,13 +6,13 @@ process VENN_UPSET_ORTHOGROUPS {
     tuple path(orthogroups), path(gene_count), path(taxonomy), path(colors_yaml), val(clades)
 
     output:
-    path("pangenome/eligible_orthogroups.txt"), emit: eligible_orthogroups
-    path("pangenome/intersection_counts.tsv"), emit: intersection_counts
-    path("pangenome/intersection_gene_lists"), emit: intersection_gene_lists
-    path("pangenome/intersection_genes_all.tsv"), emit: intersection_genes
-    path("pangenome/orthogroup_presence_absence_by_clade.tsv"), emit: presence_absence
-    path("pangenome/upset_orthogroups.{png,pdf,svg}"), emit: upset
-    path("pangenome/venn_orthogroups.{png,pdf,svg}"), emit: venn
+    path("eligible_orthogroups.txt"), emit: eligible_orthogroups
+    path("intersection_counts.tsv"), emit: intersection_counts
+    path("intersection_gene_lists"), emit: intersection_gene_lists
+    path("intersection_genes_all.tsv"), emit: intersection_genes
+    path("orthogroup_presence_absence_by_clade.tsv"), emit: presence_absence
+    path("upset_orthogroups.{png,pdf,svg}"), emit: upset
+    path("venn_orthogroups.{png,pdf,svg}"), emit: venn
 
     script:
     if (!clades) {
@@ -21,14 +21,13 @@ process VENN_UPSET_ORTHOGROUPS {
 
     """
     python_path="/shared/projects/metainvert/orthoexplorer/envs/orthoexplorer/bin/python"
-    mkdir -p pangenome
 
     PYTHONNOUSERSITE=1 \$python_path /shared/projects/metainvert/orthoexplorer/bin/venn_upset_orthogroups.py \
         --gene-counts "${gene_count}" \
         --orthogroups "${orthogroups}" \
         --taxonomy "${taxonomy}" \
         --clades "${clades}" \
-        --outdir pangenome \
+        --outdir . \
         --colors "${colors_yaml}"
     """
 
@@ -38,6 +37,6 @@ process VENN_UPSET_ORTHOGROUPS {
     \$python_path /shared/projects/metainvert/orthoexplorer/bin/venn_upset_orthogroups.py --help >/dev/null
 
     mkdir -p pangenome
-    touch pangenome/.stub
+    touch .stub
     """
 }

@@ -22,6 +22,12 @@ OUTPUT_COLUMNS = [
     "annotated_gene_count",
     "total_gene_count",
     "product_diversity",
+    "species_count",
+    "species_fraction",
+    "min_copy_number",
+    "max_copy_number",
+    "max_copy_number_species",
+    "copy_number_ratio",
     "all_products",
 ]
 
@@ -145,9 +151,46 @@ def choose_display_product(product_group):
     )[0]
 
 
-def summarize_products(orthogroup_genes):
-    """Calculate representative functional annotation statistics."""
+def calculate_copy_number_statistics(orthogroup_genes):
+    """Calculate copy-number statistics across species containing the family."""
+    copy_numbers = orthogroup_genes.groupby("specie_name", sort=False).size()
+
+    if copy_numbers.empty:
+        return {
+            "min_copy_number": 0,
+            "max_copy_number": 0,
+            "max_copy_number_species": "",
+            "copy_number_ratio": 0.0,
+        }
+
+    min_copy_number = int(copy_numbers.min())
+    max_copy_number = int(copy_numbers.max())
+
+    max_copy_number_species = "; ".join(
+        sorted(
+            copy_numbers[copy_numbers == max_copy_number].index,
+            key=str.casefold,
+        )
+    )
+
+    return {
+        "min_copy_number": min_copy_number,
+        "max_copy_number": max_copy_number,
+        "max_copy_number_species": max_copy_number_species,
+        "copy_number_ratio": max_copy_number / min_copy_number,
+    }
+
+
+def summarize_products(orthogroup_genes, total_species_count):
+    """Calculate functional annotation, presence and copy-number statistics."""
     total_gene_count = len(orthogroup_genes)
+    species_count = orthogroup_genes["specie_name"].nunique()
+    species_fraction = (
+        species_count / total_species_count
+        if total_species_count
+        else 0.0
+    )
+    copy_number_statistics = calculate_copy_number_statistics(orthogroup_genes)
 
     annotated_genes = orthogroup_genes[
         orthogroup_genes["product_key"] != ""
@@ -181,10 +224,15 @@ def summarize_products(orthogroup_genes):
             "annotated_gene_count": annotated_gene_count,
             "total_gene_count": total_gene_count,
             "product_diversity": product_diversity,
+            "species_count": species_count,
+            "species_fraction": round(species_fraction, 4),
+            "min_copy_number": copy_number_statistics["min_copy_number"],
+            "max_copy_number": copy_number_statistics["max_copy_number"],
+            "max_copy_number_species": copy_number_statistics["max_copy_number_species"],
+            "copy_number_ratio": round(copy_number_statistics["copy_number_ratio"], 4),
             "all_products": "",
         }
 
-    # Sort products for both representative selection and output readability.
     product_summary = product_summary.sort_values(
         by=["count", "species_count", "product_key"],
         ascending=[False, False, True],
@@ -220,18 +268,27 @@ def summarize_products(orthogroup_genes):
         "annotated_gene_count": annotated_gene_count,
         "total_gene_count": total_gene_count,
         "product_diversity": product_diversity,
+        "species_count": species_count,
+        "species_fraction": round(species_fraction, 4),
+        "min_copy_number": copy_number_statistics["min_copy_number"],
+        "max_copy_number": copy_number_statistics["max_copy_number"],
+        "max_copy_number_species": copy_number_statistics["max_copy_number_species"],
+        "copy_number_ratio": round(copy_number_statistics["copy_number_ratio"], 4),
         "all_products": all_products,
     }
 
 
-def annotate_orthogroups(genes):
+def annotate_orthogroups(genes, total_species_count):
     """Generate one functional annotation row per orthogroup."""
     rows = []
 
     for orthogroup, orthogroup_genes in genes.groupby("orthogroup", sort=True):
         row = {
             "orthogroup": orthogroup,
-            **summarize_products(orthogroup_genes),
+            **summarize_products(
+                orthogroup_genes,
+                total_species_count,
+            ),
         }
         rows.append(row)
 
@@ -242,8 +299,13 @@ def main():
     args = parse_args()
 
     annotations = read_annotations(args.annotations)
+    total_species_count = annotations["specie_name"].nunique()
+
     genes = select_gene_products(annotations)
-    results = annotate_orthogroups(genes)
+    results = annotate_orthogroups(
+        genes,
+        total_species_count,
+    )
 
     results.to_csv(
         args.output,
@@ -253,8 +315,10 @@ def main():
     )
 
     print(f"Read {len(args.annotations)} annotation tables")
+    print(f"Found {total_species_count} species")
     print(f"Retained {len(genes)} genes assigned to orthogroups")
     print(f"Annotated {len(results)} orthogroups")
+    print(f"Families with at least 100 copies in one species: {(results['max_copy_number'] >= 100).sum()}")
     print(f"Output written to: {args.output}")
 
 
