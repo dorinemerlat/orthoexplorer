@@ -12,15 +12,13 @@ workflow ORTHOEXPLORER {
     outgroups_csv
     tree
     colors
-    download_count
 
     main:
     PREPARE_DATASETS(
         supplied_datasets,
         datasets_to_download,
         ingroups_csv,
-        outgroups_csv,
-        download_count
+        outgroups_csv
     )
 
     // INFER_ORTHOLOGY(

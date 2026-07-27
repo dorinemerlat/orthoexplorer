@@ -68,6 +68,6 @@ process DOWNLOAD_TAXONOMY {
     """
     download_taxonomy.py --help >/dev/null
 
-    printf 'id\\tname\\tspecie_name\\ttaxid\\tgroup\\n' > taxonomy.tsv
+    touch taxonomy.tsv
     """
 }

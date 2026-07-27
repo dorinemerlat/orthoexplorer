@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import sys
 from pathlib import Path
 
 import gffutils
@@ -10,19 +9,32 @@ import pandas as pd
 
 TRANSCRIPT_FEATURE_TYPES = ("mRNA", "transcript")
 
+OUTPUT_COLUMNS = [
+    "specie_name",
+    "protein_id",
+    "gene_id",
+    "gene_name",
+    "product",
+    "go_id",
+    "go_term",
+    "category",
+]
+
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Add NCBI Gene Ontology annotations to GFF3 transcripts.")
+    parser = argparse.ArgumentParser(description="Extract NCBI GO annotations for transcripts from a GFF3 file.")
     parser.add_argument("--gff", required=True, type=Path, help="Input NCBI GFF3 file.")
     parser.add_argument("--gene2go", required=True, type=Path, help="NCBI gene2go file, optionally gzipped.")
     parser.add_argument("--taxid", required=True, help="NCBI taxonomy identifier.")
+    parser.add_argument("--species-name", required=True, help="Scientific species name.")
     parser.add_argument("--output", required=True, type=Path, help="Output TSV file.")
     return parser.parse_args()
 
 
 def get_attribute(feature, name, default=""):
-    """Return a GFF3 attribute value."""
-    return feature.attributes.get(name, [default])[0]
+    """Return the first value of a GFF3 attribute."""
+    values = feature.attributes.get(name, [])
+    return values[0] if values else default
 
 
 def extract_gene_id(feature):
@@ -30,27 +42,27 @@ def extract_gene_id(feature):
     for dbxref in feature.attributes.get("Dbxref", []):
         if dbxref.startswith("GeneID:"):
             return dbxref.removeprefix("GeneID:")
+
     return ""
 
 
 def keep_most_complete_rows(df, subset, columns):
-    """Keep the most complete row for each group."""
+    """Keep the most complete row for each identifier."""
     df = df.copy()
-
     df["_score"] = df[columns].ne("").sum(axis=1)
 
-    df = (
+    return (
         df.sort_values("_score", ascending=False)
         .drop_duplicates(subset=subset, keep="first")
         .drop(columns="_score")
         .reset_index(drop=True)
     )
 
-    return df
-
 
 def read_gff_transcripts(gff_path):
     """Read transcript annotations from an NCBI GFF3 file."""
+
+    # Build an in-memory database to query transcript features.
     db = gffutils.create_db(
         str(gff_path),
         ":memory:",
@@ -64,29 +76,28 @@ def read_gff_transcripts(gff_path):
         for transcript in db.features_of_type(feature_type, order_by=("seqid", "start")):
             rows.append(
                 {
-                    "gene_id": extract_gene_id(transcript),
-                    "gene": get_attribute(transcript, "gene"),
-                    "product": get_attribute(transcript, "product"),
                     "protein_id": get_attribute(transcript, "protein_id"),
+                    "gene_id": extract_gene_id(transcript),
+                    "gene_name": get_attribute(transcript, "gene"),
+                    "product": get_attribute(transcript, "product"),
                 }
             )
 
-    df = pd.DataFrame(
+    transcripts = pd.DataFrame(
         rows,
-        columns=["gene_id", "gene", "product", "protein_id"],
+        columns=["protein_id", "gene_id", "gene_name", "product"],
     )
 
-    df = keep_most_complete_rows(
-        df,
+    # NCBI GFF files may contain several transcripts for the same GeneID.
+    return keep_most_complete_rows(
+        transcripts,
         subset="gene_id",
-        columns=["gene", "product", "protein_id"],
+        columns=["protein_id", "gene_name", "product"],
     )
 
-    return df
 
-
-def load_taxid_annotations(gene2go_path, taxid):
-    """Load all gene2go annotations for the requested taxon."""
+def load_taxid_annotations(gene2go_path, taxid, requested_gene_ids):
+    """Load GO annotations for the requested taxon and GeneIDs."""
     columns = [
         "taxid",
         "gene_id",
@@ -99,7 +110,9 @@ def load_taxid_annotations(gene2go_path, taxid):
     ]
 
     chunks = []
+    requested_gene_ids = set(requested_gene_ids)
 
+    # Read gene2go in chunks because the complete file can be large.
     for chunk in pd.read_csv(
         gene2go_path,
         sep="\t",
@@ -109,40 +122,31 @@ def load_taxid_annotations(gene2go_path, taxid):
         compression="infer",
         chunksize=500_000,
     ):
-        chunk = chunk[chunk["taxid"] == str(taxid)]
+        chunk = chunk[
+            (chunk["taxid"] == str(taxid))
+            & chunk["gene_id"].isin(requested_gene_ids)
+            & chunk["go_id"].str.fullmatch(r"GO:\d{7}", na=False)
+        ].copy()
+
+        if chunk.empty:
+            continue
+
+        # Exclude annotations explicitly negated with the NOT qualifier.
+        qualifiers = chunk["qualifier"].fillna("").str.upper()
+        chunk = chunk[
+            ~qualifiers.str.split("|", regex=False).apply(lambda values: "NOT" in values)
+        ]
 
         if not chunk.empty:
-            chunks.append(
-                chunk[["taxid", "gene_id", "go_id", "go_term", "category"]]
-            )
+            chunks.append(chunk[["gene_id", "go_id", "go_term", "category"]])
 
     if not chunks:
-        return pd.DataFrame(
-            columns=["taxid", "gene_id", "go_id", "go_term", "category"]
-        )
-
-    return pd.concat(chunks, ignore_index=True)
-
-
-def load_go_terms(gene2go_taxid, requested_gene_ids):
-    """Extract GO terms for the requested GeneIDs."""
-
-    chunk = gene2go_taxid[
-        gene2go_taxid["gene_id"].isin(requested_gene_ids)
-        & gene2go_taxid["go_id"].str.fullmatch(r"GO:\d{7}", na=False)
-    ].copy()
-
-    qualifiers = chunk["qualifier"].fillna("").str.upper()
-    chunk = chunk[
-        ~qualifiers.str.split("|", regex=False).apply(lambda values: "NOT" in values)
-    ]
+        return pd.DataFrame(columns=["gene_id", "go_id", "go_term", "category"])
 
     return (
-        chunk[["gene_id", "go_id"]]
-        .drop_duplicates()
-        .groupby("gene_id", as_index=False)["go_id"]
-        .agg(lambda values: ",".join(sorted(values)))
-        .rename(columns={"go_id": "go_terms"})
+        pd.concat(chunks, ignore_index=True)
+        .drop_duplicates(subset=["gene_id", "go_id", "go_term", "category"])
+        .reset_index(drop=True)
     )
 
 
@@ -150,21 +154,28 @@ def main():
     args = parse_args()
 
     transcripts = read_gff_transcripts(args.gff)
-    print(f"Read {len(transcripts)} transcripts from GFF: {args.gff}")
+    print(f"Read {len(transcripts)} genes from GFF: {args.gff}")
 
-    requested_gene_ids = transcripts["gene_id"].tolist()
+    gene2go_annotations = load_taxid_annotations(
+        args.gene2go,
+        args.taxid,
+        transcripts["gene_id"].dropna(),
+    )
+    print(f"Loaded {len(gene2go_annotations)} GO annotations for taxid {args.taxid}")
 
-    gene2go_taxid = load_taxid_annotations(args.gene2go, args.taxid)
-    print(f"Loaded {len(gene2go_taxid)} gene2go annotations for taxid {args.taxid}")
-
-    go_annotations = transcripts.merge(
-        gene2go_taxid,
+    # Keep every GFF gene, including genes without a gene2go annotation.
+    annotations = transcripts.merge(
+        gene2go_annotations,
         on="gene_id",
         how="left",
     )
-    
-    go_annotations.to_csv(args.output, sep="\t", index=False)
+
+    annotations.insert(0, "specie_name", args.species_name)
+    annotations = annotations[OUTPUT_COLUMNS].fillna("")
+
+    annotations.to_csv(args.output, sep="\t", index=False)
     print(f"GO annotations written to: {args.output}")
+
 
 if __name__ == "__main__":
     main()

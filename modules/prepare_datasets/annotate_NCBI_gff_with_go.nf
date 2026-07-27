@@ -15,12 +15,11 @@ process ANNOTATE_NCBI_GFF_WITH_GO {
         /shared/projects/metainvert/orthoexplorer/bin/annotate_NCBI_gff_with_go.py \
         --gff ${gff} \
         --gene2go ${gene2go} \
-        --output ${name}_go.tsv \
-        --taxid $meta.taxid
-
-
+        --taxid ${meta.taxid} \
+        --species-name "${meta.name}" \
+        --output ${name}_go.tsv
     """
-    
+
     stub:
     """
     touch ${name}_go.tsv

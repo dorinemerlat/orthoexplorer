@@ -175,7 +175,6 @@ workflow {
         ingroups_csv,
         outgroups_csv,
         tree,
-        colors,
-        download_count
+        colors
     )
 }

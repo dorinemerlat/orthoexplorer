@@ -41,6 +41,7 @@ workflow DOWNSTREAM_ANALYSIS {
 
     VENN_UPSET_ORTHOGROUPS(pangenome_analysis_inputs)
 
+    
     // emit:
     // conservation = ASSIGN_GENE_CONSERVATION_RANK.out.results
     // pangenome     = VENN_UPSET_ORTHOGROUPS.out.results

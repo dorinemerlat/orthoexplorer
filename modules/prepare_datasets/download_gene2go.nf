@@ -1,8 +1,10 @@
 process DOWNLOAD_GENE2GO {
     tag ""
 
+    input:
+    val trigger
+
     output:
-    path("gene2go.gz")
     path("gene2go.gz")
 
     script:
