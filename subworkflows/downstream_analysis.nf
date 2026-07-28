@@ -1,7 +1,10 @@
-include { ASSIGN_GENE_CONSERVATION_RANK } from "${projectDir}/modules/downstream_analysis/assign_gene_conservation_rank"
-include { VENN_UPSET_ORTHOGROUPS        } from "${projectDir}/modules/downstream_analysis/venn_upset_orthogroups"
-include { DOWNLOAD_GO_OBO               } from "${projectDir}/modules/downstream_analysis/download_go_obo"
-include { FIND_ENRICHMENT               } from "${projectDir}/modules/downstream_analysis/find_enrichment"
+include { ASSIGN_GENE_CONSERVATION_RANK     } from "${projectDir}/modules/downstream_analysis/assign_gene_conservation_rank"
+include { VENN_UPSET_ORTHOGROUPS            } from "${projectDir}/modules/downstream_analysis/venn_upset_orthogroups"
+include { DOWNLOAD_GO_OBO                   } from "${projectDir}/modules/downstream_analysis/download_go_obo"
+include { DOWNLOAD_GOSLIM                   } from "${projectDir}/modules/downstream_analysis/download_goslim"
+include { GOATOOLS_FIND_ENRICHMENT          } from "${projectDir}/modules/downstream_analysis/goatools_find_enrichment"
+include { GOATOOLS_FIND_ENRICHMENT_GOSLIM   } from "${projectDir}/modules/downstream_analysis/goatools_find_enrichment_go_slim"
+include { PLOT_GO_ENRICHMENT                } from "${projectDir}/modules/downstream_analysis/plot_go_enrichment"
 
 workflow DOWNSTREAM_ANALYSIS {
 
@@ -10,6 +13,7 @@ workflow DOWNSTREAM_ANALYSIS {
     gene_count
     unassigned_genes
     orthogroup2go
+    population_orthogroups
     tree
     taxonomy
     colors
@@ -45,13 +49,29 @@ workflow DOWNSTREAM_ANALYSIS {
     VENN_UPSET_ORTHOGROUPS(pangenome_analysis_inputs)
 
     DOWNLOAD_GO_OBO()
+    DOWNLOAD_GOSLIM()
 
     VENN_UPSET_ORTHOGROUPS.out.intersection_gene_lists
         .flatten()
         .map { path -> [path.baseName, path] }
         .set { intersection_gene_lists }
     
-    FIND_ENRICHMENT(intersection_gene_lists, VENN_UPSET_ORTHOGROUPS.out.background_orthogroups, orthogroup2go, DOWNLOAD_GO_OBO.out)
+    GOATOOLS_FIND_ENRICHMENT(intersection_gene_lists, population_orthogroups, orthogroup2go, DOWNLOAD_GO_OBO.out)
+    GOATOOLS_FIND_ENRICHMENT_GOSLIM(intersection_gene_lists, population_orthogroups, orthogroup2go, DOWNLOAD_GO_OBO.out, DOWNLOAD_GOSLIM.out)
+    
+    GOATOOLS_FIND_ENRICHMENT.out
+        .filter { label, file -> file.size() > 0 }
+        .map { label, file -> ['without_goslim/' + label, file] }
+        .set { enrichment_results_without_goslim }
+
+    GOATOOLS_FIND_ENRICHMENT_GOSLIM.out
+        .filter { label, file -> file.size() > 0 }
+        .map { label, file -> ['with_goslim/' + label, file] }
+        .set { enrichment_results_with_goslim }
+
+    enrichment_results = enrichment_results_without_goslim.concat(enrichment_results_with_goslim)
+
+    PLOT_GO_ENRICHMENT(enrichment_results, 20, 0.05)
     
     // emit:
     // conservation = ASSIGN_GENE_CONSERVATION_RANK.out.results

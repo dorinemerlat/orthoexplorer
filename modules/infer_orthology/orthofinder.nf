@@ -10,6 +10,7 @@ process ORTHOFINDER {
     path("Orthogroups_UnassignedGenes.tsv"), emit: unassigned_genes
     path "SpeciesTree_rooted.txt", emit: tree
     path "orthofinder_results", emit: full_results
+    path "population_orthogroups.txt", emit: population_orthogroups
 
     script:
     """
@@ -36,6 +37,8 @@ process ORTHOFINDER {
     cp "\${results_dir}/Orthogroups/Orthogroups_UnassignedGenes.tsv" Orthogroups_UnassignedGenes.tsv
     cp "\${results_dir}/Species_Tree/SpeciesTree_rooted.txt" SpeciesTree_rooted.txt
     mv "\${results_dir}" orthofinder_results
+
+    tail -n +2 Orthogroups.tsv | cut -f1 | sort | uniq > population_orthogroups.txt
     """
 
     stub:
@@ -48,10 +51,11 @@ process ORTHOFINDER {
     touch Orthogroups.GeneCount.tsv
     touch Orthogroups_UnassignedGenes.tsv
     touch SpeciesTree_rooted.txt
+    touch population_orthogroups.txt
 
     cp Orthogroups.tsv orthofinder_results/Orthogroups/
     cp Orthogroups.GeneCount.tsv orthofinder_results/Orthogroups/
     cp Orthogroups_UnassignedGenes.tsv orthofinder_results/Orthogroups/
-    cp SpeciesTree_rooted.txt orthofinder_results/Orthogroups/
+    cp SpeciesTree_rooted.txt orthofinder_results/Orthogroups
     """
 }

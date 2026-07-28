@@ -89,5 +89,6 @@ workflow INFER_ORTHOLOGY {
     gene_count = gene_count
     unassigned_genes = unassigned_genes
     orthogroup2go = BUILD_ORTHOGROUP2GO.out
+    population_orthogroups = ORTHOFINDER.out.population_orthogroups
     tree = tree
 }

@@ -35,6 +35,7 @@ workflow ORTHOEXPLORER {
         INFER_ORTHOLOGY.out.gene_count,
         INFER_ORTHOLOGY.out.unassigned_genes,
         INFER_ORTHOLOGY.out.orthogroup2go,
+        INFER_ORTHOLOGY.out.population_orthogroups,
         INFER_ORTHOLOGY.out.tree,
         PREPARE_DATASETS.out.taxonomy,
         colors
